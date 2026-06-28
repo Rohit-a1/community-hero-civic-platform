@@ -1,0 +1,203 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function getSuperAdminEmail() {
+      // Fetch Super Admin email from Firestore config
+      return get(/databases/$(database)/documents/config/admin).data.superAdminEmail;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() 
+        && request.auth.token.email != null 
+        && getSuperAdminEmail() != null
+        && request.auth.token.email.toLowerCase() == getSuperAdminEmail().toLowerCase();
+    }
+
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function hasRole(userId, role) {
+      let userData = getUserData(userId);
+      return userData != null && userData.role == role && userData.approvalStatus == 'approved';
+    }
+
+    // Check if user is approved municipal or government staff
+    function isMunicipal(userId) {
+      return hasRole(userId, 'municipal') || hasRole(userId, 'government');
+    }
+
+    // Reports Collection rules
+    match /reports/{reportId} {
+      // 1. Confirm unauthenticated users cannot read or write any data
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn()
+        && isValidId(reportId)
+        && isValidReport(request.resource.data)
+        && request.resource.data.userId == request.auth.uid;
+        
+      allow update: if isSignedIn()
+        // Confirm a citizen cannot edit or delete another citizen's report
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.photoUrl == resource.data.photoUrl
+        && request.resource.data.gps == resource.data.gps
+        && request.resource.data.landmark == resource.data.landmark
+        && request.resource.data.category == resource.data.category
+        && request.resource.data.timestamp == resource.data.timestamp
+        && (!('aiDescription' in resource.data) || request.resource.data.aiDescription == resource.data.aiDescription)
+        && (!('citizenDescription' in resource.data) || request.resource.data.citizenDescription == resource.data.citizenDescription)
+        // Confirm upvote/downvote and status constraints
+        && isValidUpdate(request.resource.data)
+        && isValidUpvoteUpdate()
+        && isValidDownvoteUpdate()
+        && isStatusUpdateAllowed();
+        
+      allow delete: if false;
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read, create: if isSignedIn();
+      }
+    }
+
+    // Config Collection rules
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      // Only the Super Admin can change the "superAdminEmail" config value (and any write in config)
+      allow write: if isSuperAdmin();
+    }
+
+    // User Profile Collection rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && request.auth.uid == userId
+        && request.resource.data.role == 'citizen'
+        && request.resource.data.approvalStatus == (request.resource.data.requestedRole == 'citizen' ? 'approved' : 'pending');
+      
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.requestedRole == resource.data.requestedRole && 
+         request.resource.data.approvalStatus == resource.data.approvalStatus)
+        || isSuperAdmin()
+      );
+      allow delete: if false;
+    }
+
+    // Approved Staff Collection rules
+    match /approved_staff/{staffId} {
+      allow read: if isSignedIn();
+      // Only the Super Admin can approve/reject staff requests (updates users and approved_staff)
+      allow write: if isSuperAdmin();
+    }
+
+    // Group Drives Collection rules
+    match /group_drives/{driveId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidGroupDrive(request.resource.data);
+      allow delete: if false;
+    }
+
+    function isValidGroupDrive(data) {
+      return data.keys().hasAll(['landmarkName', 'date', 'creatorId', 'creatorName', 'participants', 'minParticipants', 'status'])
+        && data.landmarkName is string
+        && data.landmarkName.size() > 0
+        && data.landmarkName.size() <= 200
+        && data.date is string
+        && data.creatorId is string
+        && data.creatorName is string
+        && data.participants is list
+        && data.participants.size() > 0
+        && data.minParticipants == 10
+        && (data.status == 'Open' || data.status == 'Confirmed' || data.status == 'Completed')
+        && (!('beforePhotoUrl' in data) || data.beforePhotoUrl is string)
+        && (!('afterPhotoUrl' in data) || data.afterPhotoUrl is string)
+        && (!('completedAt' in data) || data.completedAt != null);
+    }
+    
+    // Report validation helper
+    function isValidReport(data) {
+      return data.keys().hasAll(['userId', 'photoUrl', 'gps', 'landmark', 'category', 'status', 'timestamp', 'upvote_count', 'downvote_count', 'upvotedBy', 'downvotedBy'])
+        && (!('aiDescription' in data) || data.aiDescription is string)
+        && (!('citizenDescription' in data) || data.citizenDescription is string)
+        && data.userId is string
+        && data.photoUrl is string
+        && data.photoUrl.size() > 0
+        && data.gps is map
+        && data.gps.keys().hasAll(['latitude', 'longitude'])
+        && data.gps.keys().size() == 2
+        && data.gps.latitude is number
+        && data.gps.longitude is number
+        && data.landmark is string
+        && data.category is string
+        && data.status == 'Reported'
+        && data.timestamp == request.time
+        && data.upvote_count == 0
+        && data.downvote_count == 0
+        && data.upvotedBy is list
+        && data.upvotedBy.size() == 0
+        && data.downvotedBy is list
+        && data.downvotedBy.size() == 0;
+    }
+
+    function isValidUpdate(data) {
+      return data.upvote_count is int
+        && data.upvote_count >= 0
+        && data.downvote_count is int
+        && data.downvote_count >= 0
+        && data.upvotedBy is list
+        && data.downvotedBy is list
+        && (data.status == 'Reported' || data.status == 'In Progress' || data.status == 'Resolved' || data.status == 'Verified' || data.status == 'Needs Review')
+        && (!('afterPhotoUrl' in data) || data.afterPhotoUrl is string)
+        && (!('resolvedGps' in data) || data.resolvedGps is map)
+        && (!('resolvedAt' in data) || data.resolvedAt != null)
+        // Confirm no faking upvote/downvote count (must match arrays)
+        && data.upvote_count == data.upvotedBy.size()
+        && data.downvote_count == data.downvotedBy.size();
+    }
+
+    // Confirm upvote/downvote constraints: only toggling own UID
+    function isValidUpvoteUpdate() {
+      let oldList = resource.data.upvotedBy;
+      let newList = request.resource.data.upvotedBy;
+      return (newList.size() == oldList.size() && newList == oldList)
+        || (newList.size() == oldList.size() + 1 && newList.hasAll(oldList) && newList.hasAny([request.auth.uid]))
+        || (newList.size() == oldList.size() - 1 && oldList.hasAll(newList) && !newList.hasAny([request.auth.uid]));
+    }
+
+    function isValidDownvoteUpdate() {
+      let oldList = resource.data.downvotedBy;
+      let newList = request.resource.data.downvotedBy;
+      return (newList.size() == oldList.size() && newList == oldList)
+        || (newList.size() == oldList.size() + 1 && newList.hasAll(oldList) && newList.hasAny([request.auth.uid]))
+        || (newList.size() == oldList.size() - 1 && oldList.hasAll(newList) && !newList.hasAny([request.auth.uid]));
+    }
+
+    // Confirm status transition limitations
+    function isStatusUpdateAllowed() {
+      let oldStatus = resource.data.status;
+      let newStatus = request.resource.data.status;
+      return oldStatus == newStatus 
+        || (newStatus != 'In Progress' && newStatus != 'Resolved')
+        // Confirm only Municipal-approved accounts can transition status to 'In Progress' or 'Resolved'
+        || ( (newStatus == 'In Progress' || newStatus == 'Resolved') && isMunicipal(request.auth.uid) );
+    }
+  }
+}

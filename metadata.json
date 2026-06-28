@@ -1,0 +1,6 @@
+{
+  "name": "Community Hero",
+  "description": "A civic issue reporting web app for potholes, water leaks, broken streetlights, and waste problems, with photo and GPS capture.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,219 @@
+{
+  "entities": {
+    "Report": {
+      "title": "Civic Report",
+      "description": "A report of a civic issue submitted by a citizen.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the citizen who submitted the report."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "The URL of the photo of the civic issue stored in Firebase Storage."
+        },
+        "gps": {
+          "type": "object",
+          "description": "The GPS location coordinates of the civic issue.",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" }
+          },
+          "required": ["latitude", "longitude"]
+        },
+        "landmark": {
+          "type": "string",
+          "description": "Nearby landmark name select or typed."
+        },
+        "category": {
+          "type": "string",
+          "description": "The category of the civic issue (e.g., Pothole, Water Leak, Broken Streetlight, Waste Problem)."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the report. Defaults to 'Reported'.",
+          "enum": ["Reported", "In Progress", "Resolved", "Verified", "Needs Review"]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the report was submitted."
+        },
+        "upvote_count": {
+          "type": "integer",
+          "description": "Number of upvotes for this report."
+        },
+        "downvote_count": {
+          "type": "integer",
+          "description": "Number of downvotes for this report."
+        },
+        "upvotedBy": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of user UIDs who upvoted."
+        },
+        "downvotedBy": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of user UIDs who downvoted."
+        },
+        "afterPhotoUrl": {
+          "type": "string",
+          "description": "Optional after-photo proof of resolution."
+        },
+        "resolvedGps": {
+          "type": "object",
+          "description": "GPS coordinates of the resolution photo captured live on-site.",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" }
+          },
+          "required": ["latitude", "longitude"]
+        },
+        "resolvedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the resolution was completed on-site."
+        },
+        "aiDescription": {
+          "type": "string",
+          "description": "Optional AI-generated description from image analysis."
+        },
+        "citizenDescription": {
+          "type": "string",
+          "description": "Optional user-entered details describing the issue."
+        },
+        "severity": {
+          "type": "string",
+          "description": "AI-detected severity level.",
+          "enum": ["Low", "Medium", "High", "Critical"]
+        }
+      },
+      "required": ["userId", "photoUrl", "gps", "landmark", "category", "status", "timestamp", "upvote_count", "downvote_count", "upvotedBy", "downvotedBy"]
+    },
+    "ApprovedStaff": {
+      "title": "Approved Staff",
+      "description": "Pre-approved phone number or email authorized for municipal or government roles.",
+      "type": "object",
+      "properties": {
+        "contact": {
+          "type": "string",
+          "description": "Pre-approved phone number or email of the staff member."
+        },
+        "role": {
+          "type": "string",
+          "description": "The administrative role assigned to this contact.",
+          "enum": ["citizen", "municipal", "government"]
+        }
+      },
+      "required": ["contact", "role"]
+    },
+    "GroupDrive": {
+      "title": "Group Drive",
+      "description": "A community cleanup or fix drive created by citizens.",
+      "type": "object",
+      "properties": {
+        "landmarkName": {
+          "type": "string",
+          "description": "The name of the area or landmark where the drive will take place."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the community drive."
+        },
+        "creatorId": {
+          "type": "string",
+          "description": "UID of the citizen who created this drive."
+        },
+        "creatorName": {
+          "type": "string",
+          "description": "Name of the creator user."
+        },
+        "participants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of participant user UIDs."
+        },
+        "minParticipants": {
+          "type": "integer",
+          "description": "The minimum number of participants required (typically 10)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Open", "Confirmed", "Completed"],
+          "description": "Status of the group drive."
+        },
+        "beforePhotoUrl": {
+          "type": "string",
+          "description": "Before-photo proof captured live via camera."
+        },
+        "afterPhotoUrl": {
+          "type": "string",
+          "description": "After-photo proof captured live via camera."
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the drive was completed."
+        }
+      },
+      "required": ["landmarkName", "date", "creatorId", "creatorName", "participants", "minParticipants", "status"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile containing gamification details like citizen streaks.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the citizen."
+        },
+        "streakCount": {
+          "type": "integer",
+          "description": "Current consecutive active days count."
+        },
+        "lastActiveDate": {
+          "type": "string",
+          "description": "Last active date in YYYY-MM-DD format."
+        }
+      },
+      "required": ["userId", "streakCount", "lastActiveDate"]
+    },
+    "Config": {
+      "title": "Configuration",
+      "description": "Dynamic configuration properties like Super Admin email address.",
+      "type": "object",
+      "properties": {
+        "superAdminEmail": {
+          "type": "string",
+          "description": "The email address of the Super Admin authorized to approve staff roles."
+        }
+      },
+      "required": ["superAdminEmail"]
+    }
+  },
+  "firestore": {
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Collection of civic issue reports submitted by citizens."
+    },
+    "/approved_staff/{staffId}": {
+      "schema": "ApprovedStaff",
+      "description": "Collection of pre-authorized staff roles."
+    },
+    "/group_drives/{driveId}": {
+      "schema": "GroupDrive",
+      "description": "Collection of community cleanup/fix drives."
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "Dynamic system configuration parameters."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Collection of user profiles tracking citizen streaks and gamification badges."
+    }
+  }
+}
